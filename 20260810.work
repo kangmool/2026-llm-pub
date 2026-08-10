@@ -1,0 +1,98 @@
+동일한 DB 머신에서 Active Session은 불과 2~6개 수준인데 Inactive Session이 600개에 달한다면, 앞서 계산한 적정 커넥션 산출 공식과 비교했을 때 심각한 "커넥션 과다 점유(Connection Hoarding / Over-provisioning)" 상태입니다.
+DB CPU나 처리량(TPS) 관점에서는 일하는 세션이 6개 미만이므로 성능 여유가 넘쳐나야 정상이지만, DB 메모리 자원 측면에서는 600개의 불필요한 유휴 세션이 엄청난 낭비와 잠재적 장애 위험을 만들고 있습니다.
+이 현상이 가져오는 문제점과 구체적인 원인 패턴, 그리고 즉시 실행할 수 있는 조치 방안입니다.
+1. 이 현상이 왜 위험한가? (600개 Inactive의 실체)
+ * DB PGA 메모리 대량 낭비
+   * Oracle 기준으로 Inactive 세션 하나당 최소 2MB ~ 5MB 이상의 PGA(Process Global Area) 메모리를 상시 점유합니다.
+   * 600개 Inactive 세션은 DB 서버 메모리를 최소 1.2GB ~ 3GB 이상 아무 일도 안 하면서 그냥 허공에 낭비하고 있다는 뜻입니다.
+ * Process / File Descriptor 한계 임계점 접근
+   * OS 레벨의 PROCESSES, SESSIONS 파라미터 한계치에 다다르면, 정작 진짜 중요한 신규 애플리케이션이나 DB 관리자 접속이 ORA-00018: maximum number of sessions exceeded 에러를 맞고 차단될 수 있습니다.
+ * Ghost Lock / Deadlock 및 Cleanup 오버헤드
+   * 애플리케이션이 쿼리를 마친 후 트랜잭션을 제대로 COMMIT/ROLLBACK하지 않은 채 Inactive로 방치하면, DB 내부 Lock 자원을 쥔 채로 세션이 유지되어 타 세션의 블로킹을 유발합니다.
+2. 왜 이런 기형적인 수치(2~6 vs 600)가 나올까? (원인 패턴)
+Active가 최대 6개라면 전체 시스템을 통틀어 실제로 필요한 커넥션은 15~20개면 충분합니다. 600개가 잡히는 원인은 크게 3가지입니다.
+① Multi-Node / Multi-Container의 min-connections 곱셈 폭발
+ * 예를 들어 Multi-App 노드/컨테이너가 30개 떠 있고, 각 노드의 sbconf에 minimumNumberOfConnections = 20 (또는 initial=20)으로 설정되어 있다면:
+   
+ * 평소 트래픽이 없어도 "최소 유지 커넥션(Min)" 설정값 때문에 600개가 DB에 시동 시점부터 영구 고정되어 있는 상태입니다.
+② connectionTimeoutMilliseconds = 0 (Idle Connection 회수 안 함)
+ * 앞서 살펴본 StreamBase 매뉴얼처럼, connectionTimeout이 0(기본값)으로 되어 있으면 트래픽 피크 때 한 번 확장된 커넥션이 트래픽이 끝나도 절대로 DB에 반납되지 않고 Inactive 상태로 평생 상주합니다.
+③ Connection Leak (닫히지 않은 커넥션 누적)
+ * 만약 min-connections가 작게 잡혀 있음에도 600개까지 계속 늘어난다면, 특정 Java Custom Operator나 쿼리 연산자에서 close()를 빼먹어 사용이 끝난 세션이 반납되지 않고 DB 쪽에 Inactive 휑하니 방치되는 전형적인 Leak 현상입니다.
+3. 원인 파악을 위한 DB 쿼리 (가장 먼저 할 일)
+DB에서 아래 쿼리를 실행하면 600개 Inactive의 정확한 출처와 원인을 1분 만에 핀포인트로 특정할 수 있습니다.
+-- 1. 600개 Inactive 세션이 어느 머신/프로그램/모듈에서 몇 개씩 잡혀있는지 집계
+SELECT machine, program, module, status, COUNT(*) AS session_cnt
+FROM v$session
+WHERE status = 'INACTIVE'
+GROUP BY machine, program, module, status
+ORDER BY session_cnt DESC;
+
+-- 2. Inactive 세션들의 유휴 시간(상주 시간) 및 마지막 실행 SQL 확인
+SELECT sid, serial#, machine, program, module, 
+       last_call_et AS idle_seconds, -- 유휴 상태로 방치된 시간(초)
+       sql_id
+FROM v$session
+WHERE status = 'INACTIVE'
+ORDER BY last_call_et DESC;
+
+ * idle_seconds (LAST_CALL_ET) 해석:
+   * 이 수치가 수만 초(몇 시간~며칠) 동안 고정되어 있다면: min-connections가 너무 높거나 connectionTimeout=0으로 풀려있어 유휴 세션을 파기하지 않는 오설정입니다.
+   * 이 수치가 계속 0에 가깝게 새로 찍히며 세션 수만 늘어난다면: **Connection Leak(미반납)**이 발생하고 있는 것입니다.
+4. 최적 개선 처방전 (Action Item)
+Active가 26개 수준이라면 아래 설정 변경만으로 **DB 커넥션을 600개 \rightarrow 2030개 수준(95% 다이어트)으로 즉시 감축**할 수 있습니다.
+ * minimumNumberOfConnections (Min Pool) 대폭 하향
+   * 노드/컨테이너당 min-connections를 기존 수십 개에서 1 또는 2로 축소합니다.
+ * connectionTimeoutMilliseconds (Idle Timeout) 설정 필수 적용
+   * connectionTimeoutMilliseconds = 5000 (5초) 또는 10000 (10초)를 부여하여, Active 쿼리가 끝난 후 5~10초간 사용되지 않는 커넥션은 즉시 DB에 반납되도록 강제합니다.
+ * maximumNumberOfConnections (Max Pool) 타이트하게 제한
+   * 노드당 max-connections를 3 ~ 5 정도로 제한해도 동시 Active 2~6개 수치를 가볍게 커버하고도 남습니다.
+[개선 전] 노드 30개 × Min 20개 = 600개 Inactive 상시 점유 (DB 메모리 고혈)
+[개선 후] 노드 30개 × Min 1개 = 30개 Inactive 유지 (Peak 시에만 3~5개로 자동 확장 후 5초 뒤 회수)
+
+이 조치를 적용하면 DB 서버 메모리가 즉시 수 GB 이상 환수되며, DB 세션 과다로 인한 모든 잠재적 위험이 완벽히 해소됩니다.
+
+
+min=1, max=20, conTimeout=60000(60초)로 설정했음에도 불구하고 프로세스/컨테이너당 계속 20개의 DB 세션이 만땅(max)으로 유지된다면, 이는 단순 유휴 타임아웃 미작동이 아니라 StreamBase 어댑터 내부의 동작 방식이나 애플리케이션 로직의 특수성 때문에 발생하는 현상입니다.
+이 현상이 발생하는 4가지 핵심 원인과 정밀 점검 포인트입니다.
+1. 가장 유력한 원인 4가지
+① Continuous Query / Stream Event Flow의 특성 (가장 흔함)
+ * 상황: StreamBase는 일반 Web Application(요청-응답 후 끝)과 달리, 스트림 데이터가 초당 수십~수백 건씩 쉼 없이 지속적으로 유입됩니다.
+ * 원인: 1분(60000ms)이라는 conTimeout 시간 동안 단 1초도 쉼 없이 쿼리/이벤트가 계속 인입되면, 커넥션 입장에서는 "유휴(Idle) 상태"로 전환된 적이 한 번도 없는 것입니다.
+ * 결과: 이벤트가 계속 들어와 20개 커넥션이 번갈아 가며 계속 사용되므로, conTimeout 카운터가 계속 리셋(Reset)되어 20개 아래로 줄어들지 않습니다.
+② ShareConnection = false + useConnectionPool = false 옵션의 잔재
+ * 상황: 만약 XML이나 Configuration 상에서 useConnectionPool = true로 정확히 지정되지 않았거나, 어댑터 속성에서 모드 설정이 꼬인 경우입니다.
+ * 원인: 앞서 매뉴얼에서 확인했듯 useConnectionPool이 활성화되지 않으면, min/max/timeout 옵션을 기재해 두었더라도 엔진이 이를 무시하고 연산자 수만큼 Dedicated Connection(전용 세션)을 20개 생성하여 상시 유지합니다.
+③ Connection Leak (닫히지 않는 커넥션의 상시 점유)
+ * 상황: Java Custom Operator나 커스텀 쿼리 연산자에서 getConnection()으로 가져온 뒤 close() 처리가 안 되었거나, 예외(Exception) 발생 시 반납이 누락되는 경우입니다.
+ * 원인: 20개의 커넥션이 풀에서 대여만 되고 반납(return)이 안 되어 "사용 중(Active/In-Use)" 상태로 계속 영구 카운트됩니다.
+ * 결과: 풀 입장에서는 20개 모두가 "현재 사용 중"이므로 유휴(Idle) 커넥션이 0개로 인식되어 conTimeout에 의한 회수 대상에서 제외됩니다.
+④ Connection Keep-Alive / Validation Query (Ping) 주기
+ * 상황: StreamBase DB Adapter 설정에 test-while-idle이나 Connection Validation Query(예: SELECT 1 FROM DUAL)가 활성화되어 있는 경우입니다.
+ * 원인: 커넥션을 유지하기 위해 1분 미만의 주기(예: 30초)로 핑(Ping) 쿼리를 자동 발사하면, 커넥션의 유휴 시간이 60초에 도달하지 못하고 계속 갱신되어 세션이 끊기지 않습니다.
+2. 원인 확정을 위한 2단계 확인 법
+Step 1. DB v$session에서 20개 세션의 LAST_CALL_ET 확인
+DB에서 해당 프로세스의 20개 세션에 대해 LAST_CALL_ET (유휴 전환 후 지난 시간, 초 단위)를 확인합니다.
+SELECT sid, serial#, status, last_call_et, sql_id, event
+FROM v$session
+WHERE machine LIKE '%YOUR_APP_HOST%'
+  AND program LIKE '%streambase%' -- 또는 관련 프로세스
+ORDER BY last_call_et ASC;
+
+ * 판정 A: status = 'INACTIVE' 이고 last_call_et가 모두 60초 이상(예: 300초, 1000초 등)이다.
+   \rightarrow conTimeout 설정이 엔진에서 정상 적용되지 않고 무시되는 상태입니다. (즉, useConnectionPool=false로 동작 중이거나 핑 쿼리로 인해 풀 회수가 동작하지 않음)
+ * 판정 B: status = 'INACTIVE' 이지만 last_call_et가 0~59초 사이에서 계속 리셋된다.
+   \rightarrow 지속적인 트래픽 인입 또는 **내부 Validation Query(핑)**로 인해 커넥션이 유휴 상태에 빠질 겨를이 없는 상태입니다.
+ * 판정 C: status = 'ACTIVE' 이거나 세션이 반납되지 않은 상태다.
+   \rightarrow Connection Leak(커넥션 미반납) 상태입니다.
+3. 현명한 해결 방법 (Action Item)
+Active 세션이 평소 2~6개 수준이라면, 세션이 회수되기를 기다리기보다 max-connections 상한 자체를 확 줄이는 것이 가장 확실하고 안전한 해결책입니다.
+ * maximumNumberOfConnections를 5~8로 대폭 하향
+   * 피크 시 필요한 커넥션이 어차피 몇 개 안 되므로, max를 20에서 5 또는 8로 축소합니다.
+   * 이렇게 하면 타임아웃 회수 여부와 상관없이 프로세스당 커넥션이 절대로 5~8개를 넘지 못하므로 600개 폭증 문제를 근본적으로 차단합니다.
+ * connectionTimeoutMilliseconds를 더 짧게 조정 (테스트용)
+   * 60000(1분)은 스트림 환경에서 긴 시간입니다. 테스트로 5000 (5초) 또는 **10000 (10초)**로 줄여서 세션이 회수되는지 확인해 봅니다.
+ * sbconf / 어댑터 설정 내 useConnectionPool = true 명시적 재확인
+   * 설정 파라미터가 최상위 Global Data Source에 올바르게 적용되어 있는지, 아니면 각 .sbapp 모듈 내 어댑터에서 Local 설정으로 덮어쓰기(Override)되고 있는지 재검증합니다.
+
+
