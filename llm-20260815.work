@@ -1,0 +1,401 @@
+# Q: v$session 뷰에 process 값이 모두 1234로 나오던데 해결책은 없나
+
+오라클 JDBC 드라이버는 기본적으로 클라이언트의 실제 OS 프로세스 ID(PID)를 알 수 없거나 전달하지 않을 때 **`v$session.process` 컬럼에 임의의 기본값인 `1234`를 채워 넣습니다****.** 이는 JDBC Thin 드라이버의 표준 동작이므로 강제로 실제 OS PID가 찍히게 만들기는 어렵습니다. [](https://stackoverflow.com/questions/59052106/how-to-find-the-application-server-process-id-from-oracle-database)
+
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAflBMVEX/XgAgHB0dGx0AFx4tHxzMTwn1WwD/YQAaGx0OGR4YGh2IOhESGh0AGB0VGh4SGR7BSwudQBC6SQxFJxo1IhskHhwAEx+NOxIeHRyyRw3rWATkVgXZUwhVKxnSUQhuMhd6NhOBNxQ7JBqUPRGmQw9iLxhnMBZ1NBZbLBlKJxk8C7FfAAAELklEQVR4nO2Z67aiOBCFMcGEQECuXrgpiJfz/i84AfUIId3tmSlg9azsv7qsz6pNVSUYhpaWlpaWlpaWltZ/Ew12y8Y/uO6ZLhmfIcSb5eL7CVqt0L5ZKAfUN62VEOKHRQhEfHvVyUoOS8TPX/FbAn/+HPjv+ILAmj0H6358QWDO7YMjXg1kWeG8AOTCJYIknDcH6Z1JBGY5cxXucg5W/rwAoxzYcT5zFQqZoM5mBRAEUhU2UT4vQRl7QwIekVkBaCYTbKJ5q0DXtZyDIp00Yi6nuIxtiSCakiCLC6nlUmkqiCoUE1bhzLz9MRs+7b5MwKPJ4meuWIDY/pz2EWiZSARsMh+cus6D8H1QBzrOwWWap7FbQruWx479OgsfWHIOpiAgx3frZcmuVwcaJhIBr+AJaNhvvIgV/eE3IvBu4IOJSHm2t9fyTee7aEiAT8A5oI3U88QTH1fG63/SQCZAwMfGvLZkAFGHuCEvhIYPCZBbgQLs8Ci+kOUeX5vYKAeIg+Ygv3qjGnR1ML+LfZZzYFeQTqTh3UMKAsTq1wE5cKXP8A7UieTsMhWC5d6edXDkKlgBJIBB05vc95914NWj/QcSIdpCH5nCCCvrgKNDl+3dMAfDng0iEiClFWx+afsScXqrMnKhu1ErmlXuuCUIedhp/+77eUV7Z5qDAvFrZR1W7Cug1Di5r7KcJwnfqYmZisDCtRhR1aNhuMGEByWaO66yL9lJlfrd2MSn6cJ38guusoLoS3FbH3aD81++JopkUqOJuIJghdr4Xg0W3qBFcnd8g44gaH7aKusgzBCv4QAMjGyGcR2UqSFB0PxuKR9JG/K+ZI2fDudF1eQSA2kSxXxgkAsZ3X0/cTb3zK+qJAN7pVUi18GqQQ8Gl/7vI4th69b0bUn9y7AvIQR6ZZZHcpXRhpn3KiTftiQH3q/D5gIZ3whVRu9sGQVl9rAEJU6y+f6Mw07As7LpPm35dWryRyLWV/zMFIZ9h0EK5QryYmBeEjl+Srq+9HQgbAJSrhx8vWoIWybH1pZZ3X6VA89AX7mOyxCeaxYnx2zfoCDYmzJ6U49+RSI2m/abmyPwEF6fYow96zMKIbf882/+VHlwrRP2Oy++ZU9yM0BpFu4KjpXb6FBsqrd41Eizw7WdBsrp9xKKJ6jAG4Ia/vlaq49HzwrcJ4z/gCC57yRb/ItEsIkWcVlpc432zB5nAs91XS4sEZ7vlrDlcBDzmeI/GEgWXkzEN2+G6S0gQ1BjHdxixp6OYLCn8Q8hhC2r+HEcc2d+b/VCECrbmYVM8C6QrT9TGbRriwX+voTu9uZnSh4ehL4mpw5Dn6mzgHeEnkTU+eVCqOyDoNdy/wZgtzAAXxwA/E5EA/x1AEubEH4f+nEjAo5v0GqLf6DtFfxQQH4o6PhaWlpaWlpaWlpaWlr/f/0DViY+xu94gUsAAAAASUVORK5CYII=)Stack Overflow +1
+
+하지만 `1234` 대신 **노드별 고유 식별 값을 `v$session`에 명시적으로 강제 주입**하거나, 아예 `v$session`의 다른 컬럼을 활용하는 확실한 해결책이 있습니다. [](https://stackoverflow.com/questions/50095637/uniquely-identify-source-jdbc-process-in-oracle-db)
+
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAflBMVEX/XgAgHB0dGx0AFx4tHxzMTwn1WwD/YQAaGx0OGR4YGh2IOhESGh0AGB0VGh4SGR7BSwudQBC6SQxFJxo1IhskHhwAEx+NOxIeHRyyRw3rWATkVgXZUwhVKxnSUQhuMhd6NhOBNxQ7JBqUPRGmQw9iLxhnMBZ1NBZbLBlKJxk8C7FfAAAELklEQVR4nO2Z67aiOBCFMcGEQECuXrgpiJfz/i84AfUIId3tmSlg9azsv7qsz6pNVSUYhpaWlpaWlpaWltZ/Ew12y8Y/uO6ZLhmfIcSb5eL7CVqt0L5ZKAfUN62VEOKHRQhEfHvVyUoOS8TPX/FbAn/+HPjv+ILAmj0H6358QWDO7YMjXg1kWeG8AOTCJYIknDcH6Z1JBGY5cxXucg5W/rwAoxzYcT5zFQqZoM5mBRAEUhU2UT4vQRl7QwIekVkBaCYTbKJ5q0DXtZyDIp00Yi6nuIxtiSCakiCLC6nlUmkqiCoUE1bhzLz9MRs+7b5MwKPJ4meuWIDY/pz2EWiZSARsMh+cus6D8H1QBzrOwWWap7FbQruWx479OgsfWHIOpiAgx3frZcmuVwcaJhIBr+AJaNhvvIgV/eE3IvBu4IOJSHm2t9fyTee7aEiAT8A5oI3U88QTH1fG63/SQCZAwMfGvLZkAFGHuCEvhIYPCZBbgQLs8Ci+kOUeX5vYKAeIg+Ygv3qjGnR1ML+LfZZzYFeQTqTh3UMKAsTq1wE5cKXP8A7UieTsMhWC5d6edXDkKlgBJIBB05vc95914NWj/QcSIdpCH5nCCCvrgKNDl+3dMAfDng0iEiClFWx+afsScXqrMnKhu1ErmlXuuCUIedhp/+77eUV7Z5qDAvFrZR1W7Cug1Di5r7KcJwnfqYmZisDCtRhR1aNhuMGEByWaO66yL9lJlfrd2MSn6cJ38guusoLoS3FbH3aD81++JopkUqOJuIJghdr4Xg0W3qBFcnd8g44gaH7aKusgzBCv4QAMjGyGcR2UqSFB0PxuKR9JG/K+ZI2fDudF1eQSA2kSxXxgkAsZ3X0/cTb3zK+qJAN7pVUi18GqQQ8Gl/7vI4th69b0bUn9y7AvIQR6ZZZHcpXRhpn3KiTftiQH3q/D5gIZ3whVRu9sGQVl9rAEJU6y+f6Mw07As7LpPm35dWryRyLWV/zMFIZ9h0EK5QryYmBeEjl+Srq+9HQgbAJSrhx8vWoIWybH1pZZ3X6VA89AX7mOyxCeaxYnx2zfoCDYmzJ6U49+RSI2m/abmyPwEF6fYow96zMKIbf882/+VHlwrRP2Oy++ZU9yM0BpFu4KjpXb6FBsqrd41Eizw7WdBsrp9xKKJ6jAG4Ia/vlaq49HzwrcJ4z/gCC57yRb/ItEsIkWcVlpc432zB5nAs91XS4sEZ7vlrDlcBDzmeI/GEgWXkzEN2+G6S0gQ1BjHdxixp6OYLCn8Q8hhC2r+HEcc2d+b/VCECrbmYVM8C6QrT9TGbRriwX+voTu9uZnSh4ehL4mpw5Dn6mzgHeEnkTU+eVCqOyDoNdy/wZgtzAAXxwA/E5EA/x1AEubEH4f+nEjAo5v0GqLf6DtFfxQQH4o6PhaWlpaWlpaWlpaWlr/f/0DViY+xu94gUsAAAAASUVORK5CYII=)Stack Overflow
+
+해결책 1: JDBC 연결 속성(`oracle.jdbc.v$session.process`) 명시적 설정
+
+오라클 JDBC 드라이버는 연결 프로퍼티에 `v$session.process` 값을 직접 지정할 수 있는 히든/공식 속성을 제공합니다. `sbd.sbconf` (또는 치환 파일 `.subst`)에서 이 속성에 노드별 고유 이름을 할당하면 `1234` 대신 해당 값이 `process` 컬럼에 그대로 찍히게 만들 수 있습니다. [](https://stackoverflow.com/questions/50095637/uniquely-identify-source-jdbc-process-in-oracle-db)
+
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAflBMVEX/XgAgHB0dGx0AFx4tHxzMTwn1WwD/YQAaGx0OGR4YGh2IOhESGh0AGB0VGh4SGR7BSwudQBC6SQxFJxo1IhskHhwAEx+NOxIeHRyyRw3rWATkVgXZUwhVKxnSUQhuMhd6NhOBNxQ7JBqUPRGmQw9iLxhnMBZ1NBZbLBlKJxk8C7FfAAAELklEQVR4nO2Z67aiOBCFMcGEQECuXrgpiJfz/i84AfUIId3tmSlg9azsv7qsz6pNVSUYhpaWlpaWlpaWltZ/Ew12y8Y/uO6ZLhmfIcSb5eL7CVqt0L5ZKAfUN62VEOKHRQhEfHvVyUoOS8TPX/FbAn/+HPjv+ILAmj0H6358QWDO7YMjXg1kWeG8AOTCJYIknDcH6Z1JBGY5cxXucg5W/rwAoxzYcT5zFQqZoM5mBRAEUhU2UT4vQRl7QwIekVkBaCYTbKJ5q0DXtZyDIp00Yi6nuIxtiSCakiCLC6nlUmkqiCoUE1bhzLz9MRs+7b5MwKPJ4meuWIDY/pz2EWiZSARsMh+cus6D8H1QBzrOwWWap7FbQruWx479OgsfWHIOpiAgx3frZcmuVwcaJhIBr+AJaNhvvIgV/eE3IvBu4IOJSHm2t9fyTee7aEiAT8A5oI3U88QTH1fG63/SQCZAwMfGvLZkAFGHuCEvhIYPCZBbgQLs8Ci+kOUeX5vYKAeIg+Ygv3qjGnR1ML+LfZZzYFeQTqTh3UMKAsTq1wE5cKXP8A7UieTsMhWC5d6edXDkKlgBJIBB05vc95914NWj/QcSIdpCH5nCCCvrgKNDl+3dMAfDng0iEiClFWx+afsScXqrMnKhu1ErmlXuuCUIedhp/+77eUV7Z5qDAvFrZR1W7Cug1Di5r7KcJwnfqYmZisDCtRhR1aNhuMGEByWaO66yL9lJlfrd2MSn6cJ38guusoLoS3FbH3aD81++JopkUqOJuIJghdr4Xg0W3qBFcnd8g44gaH7aKusgzBCv4QAMjGyGcR2UqSFB0PxuKR9JG/K+ZI2fDudF1eQSA2kSxXxgkAsZ3X0/cTb3zK+qJAN7pVUi18GqQQ8Gl/7vI4th69b0bUn9y7AvIQR6ZZZHcpXRhpn3KiTftiQH3q/D5gIZ3whVRu9sGQVl9rAEJU6y+f6Mw07As7LpPm35dWryRyLWV/zMFIZ9h0EK5QryYmBeEjl+Srq+9HQgbAJSrhx8vWoIWybH1pZZ3X6VA89AX7mOyxCeaxYnx2zfoCDYmzJ6U49+RSI2m/abmyPwEF6fYow96zMKIbf882/+VHlwrRP2Oy++ZU9yM0BpFu4KjpXb6FBsqrd41Eizw7WdBsrp9xKKJ6jAG4Ia/vlaq49HzwrcJ4z/gCC57yRb/ItEsIkWcVlpc432zB5nAs91XS4sEZ7vlrDlcBDzmeI/GEgWXkzEN2+G6S0gQ1BjHdxixp6OYLCn8Q8hhC2r+HEcc2d+b/VCECrbmYVM8C6QrT9TGbRriwX+voTu9uZnSh4ehL4mpw5Dn6mzgHeEnkTU+eVCqOyDoNdy/wZgtzAAXxwA/E5EA/x1AEubEH4f+nEjAo5v0GqLf6DtFfxQQH4o6PhaWlpaWlpaWlpaWlr/f/0DViY+xu94gUsAAAAASUVORK5CYII=)Stack Overflow
+
+-   **`sbd.sbconf` 적용 예시:**
+    
+    xml
+    
+    ```
+    <data-source name="Oracle_NodeA" 
+                 serverURL="jdbc:oracle:thin:@//db-server:1521/ORCL" 
+                 driverClassName="oracle.jdbc.OracleDriver" 
+                 userName="app_user" password="pwd">
+      <!-- v$session.process 컬럼에 1234 대신 들어갈 고유 값 지정 -->
+      <property name="oracle.jdbc.v$session.process" value="StreamBase-NodeA-PID"/>
+    </data-source>
+    ```
+    
+    코드를 사용할 때는 주의가 필요합니다.
+    
+    _(노드 B의 설정 파일에서는 `value="StreamBase-NodeB-PID"` 형태로 다르게 분리합니다.)_ 
+
+해결책 2: `v$session.client_identifier` 또는 `module` 컬럼 활용
+
+`process` 컬럼에 집착하는 대신, 애플리케이션 식별용으로 오라클이 권장하는 표준 메타데이터 컬럼인 `CLIENT_IDENTIFIER`나 `MODULE`을 사용하는 것이 구조적으로 가장 깔끔합니다. 
+
+-   **`sbd.sbconf` 적용 예시:**
+    
+    xml
+    
+    ```
+    <property name="v$session.client_identifier" value="Node-A-ID"/>
+    <property name="v$session.osuser" value="StreamBaseApp"/>
+    ```
+    
+    코드를 사용할 때는 주의가 필요합니다.
+    
+-   **확인용 SQL 쿼리:**
+    
+    sql
+    
+    ```
+    SELECT sid, serial#, process, client_identifier, program, machine 
+    FROM v$session 
+    WHERE client_identifier = 'Node-A-ID';
+    ```
+    
+    코드를 사용할 때는 주의가 필요합니다.
+    
+     
+
+만약 `oracle.jdbc.v$session.process` 속성을 적용했을 때 사용 중인 오라클 JDBC 드라이버 버전에서 정상 반영되는지 테스트가 필요하신가요? 아니면 **치환 파일(`.subst`)과 연동해 노드별로 자동 매핑**하는 최종 설정을 완성해 드릴까요? 
+
+
+
+# Q: 관련 컬럼이 여럿이네 각각의 용도
+
+오라클 **[v$session](https://docs.oracle.com/en/database/oracle/oracle-database/23/refrn/V-SESSION.html)** 뷰에서 세션과 클라이언트 정보를 나타내는 주요 컬럼들의 **용도와 목적**은 다음과 같습니다. [](https://docs.oracle.com/en/database/oracle/oracle-database/23/refrn/V-SESSION.html)
+
+![](data:image/png;base64,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)Oracle Help Center +1
+
+| 컬럼명 | 주요 용도 및 설명 | 스트림베이스 노드 식별 시 활용 포인트 |
+| --- | --- | --- |
+| **`PROCESS`** | 클라이언트 측 **OS 프로세스 ID(PID)**. Thin JDBC 드라이버 환경에서는 보통 알 수 없어 임의값(`1234`)이 표시됨 | `oracle.jdbc.v$session.process` 속성으로 강제 주입 가능 |
+| **`PROGRAM`** | 접속한 클라이언트의 **실행 파일/프로그램 명** (예: `JDBC Thin Client`) | `v$session.program` 속성으로 `StreamBase-NodeA` 처럼 노드 명 지정 용이 |
+| **`CLIENT_INFO`** | 애플리케이션이 **자유롭게 임의의 문자열을 기록**하여 세션을 구별하는 공간 | 노드 별 고유 식별자나 작업자 이름을 동적/정적으로 주입하기 가장 좋음 |
+| **`MODULE`** | 현재 수행 중인 **기능/업무 모듈 명** (`DBMS_APPLICATION_INFO.SET_MODULE`로 설정) | 노드 내에서 수행되는 핵심 비즈니스 로직(모듈) 단위로 구별할 때 유용 |
+| **`ACTION`** | 모듈 내의 **세부 동작/액션 명** (`DBMS_APPLICATION_INFO.SET_ACTION`으로 설정) | 특정 노드 안에서 어떤 쿼리/세부 작업이 돌고 있는지 추적할 때 사용 |
+| **`CLIENT_IDENTIFIER`** | **최종 사용자/세션 전역 식별자** (End-to-End Tracing 표준, `DBMS_SESSION` 연동) | 커넥션 풀이나 다중 노드 환경에서 가장 명확하게 개별 주체를 분리할 때 권장 |
+| **`MACHINE`** | 클라이언트가 실행 중인 **서버 호스트 명(Hostname) 또는 IP** | 물리적 서버 머신 단위로 구분할 때 확인 (클러스터 환경) |
+| **`OSUSER`** | 클라이언트 OS를 로그인한 **사용자 계정명** | OS 실행 주체 계정별 구분이 필요할 때 참조 |
+
+만약 이 컬럼들 중 **노드 모니터링을 위해 가장 효율적인 조합**을 추천받고 싶으시다면 \[CLIENT\_INFO와 PROGRAM 활용 방안\]에 대해 더 설명해 드릴까요? 
+
+
+
+# Q: 설명해주세요
+
+스트림베이스(StreamBase) 노드 모니터링을 위해 오라클 `v$session`에서 가장 효율적인 조합은 `PROGRAM`**과** `CLIENT_INFO`를 동시에 활용하는 것입니다. 
+
+오라클 관리자(DBA) 관점과 스트림베이스 운영자 관점을 모두 만족하는 가장 정석적인 활용 방안을 정리해 드립니다. 
+
+* * *
+
+💡 가장 효율적인 조합: `PROGRAM` + `CLIENT_INFO`
+
+이 두 컬럼을 조합하면 오라클 세션 목록을 조회할 때 **"어떤 노드가 접속했는지(대분류)"**와 **"그 노드에서 어떤 목적으로 띄운 커넥션인지(소분류)"**를 단 한 줄의 쿼리로 명확하게 파악할 수 있습니다. 
+
+1\. `PROGRAM` 컬럼: 대분류 (스트림베이스 노드 식별) 
+
+-   **목적:** 수많은 DB 접속 세션 중 **스트림베이스 노드들만 일괄 필터링**하기 위해 사용합니다.
+-   **설정 규칙:** 모든 노드에 공통적인 접두사(Prefix)를 붙이고 뒤에 노드 ID를 붙입니다.
+-   **예시:** `StreamBase:Node-A`, `StreamBase:Node-B` 
+
+2\. `CLIENT_INFO` 컬럼: 소분류 (용도 및 상세 식별) 
+
+-   **목적:** 하나의 노드 안에서 맺어지는 **여러 JDBC 커넥션 풀(Pool)의 세부 용도**를 식별하기 위해 사용합니다.
+-   **설정 규칙:** `Query Operator`가 참조하는 데이터소스의 목적이나 타겟 업무명을 적습니다.
+-   **예시:** `Realtime-Insert-Pool`, `Batch-Select-Pool` 
+
+* * *
+
+🛠️ substitutionfile과 sbd.sbconf 최종 연동 예시
+
+앞서 말씀하신 **치환 파일(substitutionfile)** 구조를 활용하여, 각 노드가 기동될 때 이 두 컬럼에 자동으로 다른 값이 주입되도록 구현하는 설정입니다. 
+
+1\. 노드별 치환 파일 설정 (`.subst`) 
+
+각 노드가 실행될 때 고유하게 들고 갈 변수 값을 정의합니다. 
+
+-   **노드 A용 (`nodeA.subst`)**
+    
+    properties
+    
+    ```
+    NODE_NAME=Node-A
+    DB_POOL_PURPOSE=Order-Processing
+    ```
+    
+    코드를 사용할 때는 주의가 필요합니다.
+    
+-   **노드 B용 (`nodeB.subst`)**
+    
+    properties
+    
+    ```
+    NODE_NAME=Node-B
+    DB_POOL_PURPOSE=Risk-Monitoring
+    ```
+    
+    코드를 사용할 때는 주의가 필요합니다.
+    
+     
+
+2\. 공통 서버 설정 파일 (`sbd.sbconf`) 
+
+치환 파일의 변수(`@...@`)를 받아 오라클 드라이버 프로퍼티에 매핑합니다. 
+
+xml
+
+```
+<data-sources>
+  <data-source name="Oracle_Dynamic_Source" 
+               serverURL="jdbc:oracle:thin:@//db-cluster-vip:1521/ORCL" 
+               driverClassName="oracle.jdbc.OracleDriver" 
+               userName="app_user" password="pwd">
+    
+    <!-- PROGRAM: 대분류 (StreamBase:Node-A 형태로 치환됨) -->
+    <property name="v$session.program" value="StreamBase:@NODE_NAME@"/>
+    
+    <!-- CLIENT_INFO: 소분류 (Order-Processing 형태로 치환됨) -->
+    <property name="v$session.client_info" value="@DB_POOL_PURPOSE@"/>
+    
+    <!-- (선택) PROCESS: 1234가 보기 싫다면 노드명으로 강제 덮어쓰기 -->
+    <property name="oracle.jdbc.v$session.process" value="@NODE_NAME@"/>
+    
+  </data-source>
+</data-sources>
+```
+
+코드를 사용할 때는 주의가 필요합니다.
+
+* * *
+
+🔎 DB 모니터링 및 추적 쿼리
+
+위와 같이 설정해 두면 DB 트래픽이 몰리거나 락(Lock)이 발생했을 때, DBA나 운영자는 아래 쿼리 한 줄로 **"현재 장애를 유발하거나 쿼리를 수행 중인 정확한 스트림베이스 노드와 컴포넌트"**를 즉시 찾아낼 수 있습니다. 
+
+sql
+
+```
+SELECT 
+    sid, 
+    serial#, 
+    program       AS "스트림베이스_노드", 
+    client_info   AS "커넥션_용도", 
+    process       AS "프로세스_치환값",
+    machine       AS "서버_호스트명", 
+    status, 
+    sql_id
+FROM v$session
+WHERE program LIKE 'StreamBase:%'  -- 스트림베이스 세션만 필터링
+ORDER BY program, client_info;
+```
+
+코드를 사용할 때는 주의가 필요합니다.
+
+이렇게 세팅하시면 `1234`로만 찍혀서 어떤 노드가 보낸 쿼리인지 몰라 헤매던 문제를 완벽하게 해결할 수 있습니다. 
+
+혹시 현재 프로젝트에서 **HOCON 형식(**`node.conf`**)**의 최신 스트림베이스 설정을 사용 중이신가요? 필요하시다면 **HOCON 문법 기준의 JDBC 프로퍼티 설정 예시**도 작성해 드릴 수 있습니다. 
+
+
+
+# Q: 10.6 기준 설정 방법
+
+TIBCO StreamBase **10.6 버전**에서는 기존의 XML 기반인 `sbd.sbconf` 대신 **HOCON 형식(**`.conf`**)**의 [StreamBase Configuration Files](https://docs.streambase.com/sb16/topic/com.streambase.sb.ide.help/data/html/gettingstarted/gs16-hocon.html) 표준 설정을 사용합니다. 
+
+오라클 `v$session` 정보(`PROGRAM`, `CLIENT_INFO`) 및 노드 식별자 속성을 10.6 버전의 HOCON 문법과 치환 변수(`${...}`)로 설정하는 방법은 다음과 같습니다. [](https://docs.tibco.com/pub/sb-cep/10.3.0/doc/html/hocon/hocon-syntax-reference.html)
+
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABXUlEQVQ4jYXTP0hWURjH8Y+Xi0tgiiCmhdAi4SI4iDgUNikvQk5GJBgYLja4hQiWfyDEQchBhwh1NmiMQBCLhtwcBUHQxVxU0ECx4Rzz5XLf1wcOl/vc5/u755zn91R4/1smujCAx6iJuWNsYRlfiovTDLyKF1lF3MUDFPAVwzjMCnzH0xwYDrCLOvShFc24SGLB2zLwGTZQiaOYe4gFSFCNqRIwfMCjCN8ryr/G/QTPolBevEI7zrGDpsz3vgSdJeAeNKIbs3ieU9OWuGnVdRwIZ6zHpHA3vajNEahKMttfjX99gk+CHyriMzdSXAoteokfmMcbTGAFp6Vg/Ekxij00YBstWMQ7/MKdMgKbSYSnsR/hOcFpS0IHSsVfrKXxjF0xOYKPGMNQGRjGcZLiSrjlZmwKrixnLPgmtPb/LBzGVcDMLfBnDF6/ZKfxp+DMfnQIU0iw8YYwzuvFwD9KnkDZ4LzwLwAAAABJRU5ErkJggg==)TIBCO Product Documentation +1
+
+1\. 노드별 치환 파일 설정 (`nodeA.subst`)
+
+10.6 버전에서는 치환 변수 선언 시 `${VAR_NAME[:-default_value]}` 형태의 HOCON 치환 문법을 사용합니다. [](https://docs.tibco.com/pub/sb-cep/10.3.0/doc/html/hocon/hocon-syntax-reference.html)
+
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABXUlEQVQ4jYXTP0hWURjH8Y+Xi0tgiiCmhdAi4SI4iDgUNikvQk5GJBgYLja4hQiWfyDEQchBhwh1NmiMQBCLhtwcBUHQxVxU0ECx4Rzz5XLf1wcOl/vc5/u755zn91R4/1smujCAx6iJuWNsYRlfiovTDLyKF1lF3MUDFPAVwzjMCnzH0xwYDrCLOvShFc24SGLB2zLwGTZQiaOYe4gFSFCNqRIwfMCjCN8ryr/G/QTPolBevEI7zrGDpsz3vgSdJeAeNKIbs3ieU9OWuGnVdRwIZ6zHpHA3vajNEahKMttfjX99gk+CHyriMzdSXAoteokfmMcbTGAFp6Vg/Ekxij00YBstWMQ7/MKdMgKbSYSnsR/hOcFpS0IHSsVfrKXxjF0xOYKPGMNQGRjGcZLiSrjlZmwKrixnLPgmtPb/LBzGVcDMLfBnDF6/ZKfxp+DMfnQIU0iw8YYwzuvFwD9KnkDZ4LzwLwAAAABJRU5ErkJggg==)TIBCO Product Documentation
+
+-   **노드 A용 (`nodeA.subst` 또는 `.properties`)**
+    
+    properties
+    
+    ```
+    NODE_NAME=Node-A
+    DB_PURPOSE=Order-Processing
+    ```
+    
+    코드를 사용할 때는 주의가 필요합니다.
+    
+     
+
+2\. 10.6 표준 HOCON 설정 파일 (`oracle_ds.conf`)
+
+타입을 `com.tibco.ep.streambase.configuration.jdbcdatasource`로 지정하고, `connectionProperties` 또는 드라이버 매개변수를 통해 세션 메타데이터를 주입합니다. [](https://docs.streambase.com/latest/topic/com.streambase.sb.ide.help/data/html/hocon/hocon-sb-JDBCDataSource.html)
+
+![](https://encrypted-tbn3.gstatic.com/faviconV2?url=https://docs.streambase.com&client=AIM&size=128&type=FAVICON&fallback_opts=TYPE,SIZE,URL)StreamBase Documentation +1
+
+hocon
+
+```
+name = "10.6 Oracle Data Source Configuration"
+type = "com.tibco.ep.streambase.configuration.jdbcdatasource"
+version = "1.0.0"
+
+configuration = {
+  JDBCDataSourceGroup = {
+    jdbcDataSources = {
+      Oracle_Dynamic_Source = {
+        driverClassName = "oracle.jdbc.OracleDriver"
+        serverURL = "jdbc:oracle:thin:@//db-server:1521/ORCL"
+        
+        # 10.6 HOCON 치환 변수 적용 (${변수명})
+        connectionProperties = "v$session.program=StreamBase:${NODE_NAME}&v$session.client_info=${DB_PURPOSE}"
+      }
+    }
+  }
+}
+```
+
+코드를 사용할 때는 주의가 필요합니다.
+
+`connectionProperties`를 사용하여 위와 같이 설정하면 `nodeA.subst`에서 정의한 변수가 동적으로 적용됩니다. [](https://docs.streambase.com/latest/topic/com.streambase.sb.ide.help/data/html/hocon/hocon-sb-JDBCDataSource.html)
+
+![](https://encrypted-tbn3.gstatic.com/faviconV2?url=https://docs.streambase.com&client=AIM&size=128&type=FAVICON&fallback_opts=TYPE,SIZE,URL)StreamBase Documentation +2
+
+10.6 설정과 관련하여 추가로 필요한 부분이 있으신가요? 
+
+-   노드 기동 시 **`epadmin` 명령어로 치환 파일(`.subst`)을 물려 배포하는 구체적 명령어** 
+    
+-   HOCON 파일 내 **비밀번호 암호화(`sbcipher`) 적용 방법** 
+    
+
+
+# Q: 비밀번호 암호화(sbcipher) 적용 방법
+
+TIBCO StreamBase **10.6 버전**에서는 과거 XML 시절에 사용하던 **`sbcipher` 도구가 공식적으로 디리케이트(Deprecated)** 되었으며, 신규 암호화 방식인 **`epadmin encrypt secret`** 명령어를 사용해야 합니다. 다만 하위 호환성을 위해 `sbcipher`로 암호화된 문자열의 런타임 복호화는 여전히 지원하나, 신규 구축 시에는 최신 노드 보안/시크릿 시스템을 적용하는 것이 표준입니다. [](https://docs.tibco.com/pub/str/latest/doc/html/admin/sec-encryption.html)
+
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABXUlEQVQ4jYXTP0hWURjH8Y+Xi0tgiiCmhdAi4SI4iDgUNikvQk5GJBgYLja4hQiWfyDEQchBhwh1NmiMQBCLhtwcBUHQxVxU0ECx4Rzz5XLf1wcOl/vc5/u755zn91R4/1smujCAx6iJuWNsYRlfiovTDLyKF1lF3MUDFPAVwzjMCnzH0xwYDrCLOvShFc24SGLB2zLwGTZQiaOYe4gFSFCNqRIwfMCjCN8ryr/G/QTPolBevEI7zrGDpsz3vgSdJeAeNKIbs3ieU9OWuGnVdRwIZ6zHpHA3vajNEahKMttfjX99gk+CHyriMzdSXAoteokfmMcbTGAFp6Vg/Ekxij00YBstWMQ7/MKdMgKbSYSnsR/hOcFpS0IHSsVfrKXxjF0xOYKPGMNQGRjGcZLiSrjlZmwKrixnLPgmtPb/LBzGVcDMLfBnDF6/ZKfxp+DMfnQIU0iw8YYwzuvFwD9KnkDZ4LzwLwAAAABJRU5ErkJggg==)TIBCO Product Documentation +2
+
+1\. 최신 표준 방식: `epadmin encrypt secret` 사용
+
+노드 레벨의 마스터 시크릿을 기반으로 민감한 프로퍼티(비밀번호 등)를 안전하게 암호화하고 HOCON 설정 파일에 적용하는 절차입니다. [](https://docs.tibco.com/pub/str/latest/doc/html/admin/sec-encryption.html)
+
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABXUlEQVQ4jYXTP0hWURjH8Y+Xi0tgiiCmhdAi4SI4iDgUNikvQk5GJBgYLja4hQiWfyDEQchBhwh1NmiMQBCLhtwcBUHQxVxU0ECx4Rzz5XLf1wcOl/vc5/u755zn91R4/1smujCAx6iJuWNsYRlfiovTDLyKF1lF3MUDFPAVwzjMCnzH0xwYDrCLOvShFc24SGLB2zLwGTZQiaOYe4gFSFCNqRIwfMCjCN8ryr/G/QTPolBevEI7zrGDpsz3vgSdJeAeNKIbs3ieU9OWuGnVdRwIZ6zHpHA3vajNEahKMttfjX99gk+CHyriMzdSXAoteokfmMcbTGAFp6Vg/Ekxij00YBstWMQ7/MKdMgKbSYSnsR/hOcFpS0IHSsVfrKXxjF0xOYKPGMNQGRjGcZLiSrjlZmwKrixnLPgmtPb/LBzGVcDMLfBnDF6/ZKfxp+DMfnQIU0iw8YYwzuvFwD9KnkDZ4LzwLwAAAABJRU5ErkJggg==)TIBCO Product Documentation +1
+
+1.  **마스터 시크릿 키 로드/설치:**  
+    노드 기동 시 또는 운영 중 [epadmin load secret](https://docs.streambase.com/latest/topic/com.streambase.sb.ide.help/data/html/admin/sec-encryption.html) 명령어를 통해 노드에 보안 시크릿 키를 주입합니다. [](https://docs.streambase.com/latest/topic/com.streambase.sb.ide.help/data/html/admin/sec-encryption.html)
+    
+    ![](https://encrypted-tbn3.gstatic.com/faviconV2?url=https://docs.streambase.com&client=AIM&size=128&type=FAVICON&fallback_opts=TYPE,SIZE,URL)StreamBase Documentation
+2.  **비밀번호 암호화 수행:**  
+    스트림베이스 커맨드 롬프트(StreamBase Command Prompt)에서 아래 명령어를 실행하여 평문 비밀번호를 암호화합니다.
+    
+    bash
+    
+    ```
+    epadmin encrypt secret
+    ```
+    
+    코드를 사용할 때는 주의가 필요합니다.
+    
+    _(콘솔에서 평문 비밀번호를 입력하면 `#!` 접두사가 붙은 암호화된 문자열이 출력됩니다.)_ [](https://docs.tibco.com/pub/str/latest/doc/html/admin/sec-encryption.html)
+    
+    ![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABXUlEQVQ4jYXTP0hWURjH8Y+Xi0tgiiCmhdAi4SI4iDgUNikvQk5GJBgYLja4hQiWfyDEQchBhwh1NmiMQBCLhtwcBUHQxVxU0ECx4Rzz5XLf1wcOl/vc5/u755zn91R4/1smujCAx6iJuWNsYRlfiovTDLyKF1lF3MUDFPAVwzjMCnzH0xwYDrCLOvShFc24SGLB2zLwGTZQiaOYe4gFSFCNqRIwfMCjCN8ryr/G/QTPolBevEI7zrGDpsz3vgSdJeAeNKIbs3ieU9OWuGnVdRwIZ6zHpHA3vajNEahKMttfjX99gk+CHyriMzdSXAoteokfmMcbTGAFp6Vg/Ekxij00YBstWMQ7/MKdMgKbSYSnsR/hOcFpS0IHSsVfrKXxjF0xOYKPGMNQGRjGcZLiSrjlZmwKrixnLPgmtPb/LBzGVcDMLfBnDF6/ZKfxp+DMfnQIU0iw8YYwzuvFwD9KnkDZ4LzwLwAAAABJRU5ErkJggg==)TIBCO Product Documentation +1
+3.  **10.6 HOCON 설정 파일(`conf`)에 적용:**  
+    출력된 암호화 문자열을 `password` 필드에 그대로 입력합니다.
+    
+    hocon
+    
+    ```
+    Oracle_Dynamic_Source = {
+      driverClassName = "oracle.jdbc.OracleDriver"
+      serverURL = "jdbc:oracle:thin:@//db-server:1521/ORCL"
+      userName = "app_user"
+      # epadmin으로 암호화되어 #!로 시작하는 암호 문자열 적용
+      password = "#!YFqc/bvasl/TNwDxypF8PHsnlp=="
+      connectionProperties = "v$session.program=StreamBase:${NODE_NAME}&v$session.client_info=${DB_PURPOSE}"
+    }
+    ```
+    
+    코드를 사용할 때는 주의가 필요합니다.
+    
+     [](https://docs.streambase.com/latest/topic/com.streambase.sb.ide.help/data/html/hocon/hocon-sb-JDBCDataSource.html)
+    
+    ![](https://encrypted-tbn3.gstatic.com/faviconV2?url=https://docs.streambase.com&client=AIM&size=128&type=FAVICON&fallback_opts=TYPE,SIZE,URL)StreamBase Documentation +1
+
+2\. 레거시 방식 (`sbcipher`) - 참고용
+
+과거에 생성한 `sbcipher` 암호화 텍스트가 이미 존재하여 임시로 써야 하는 경우, StreamBase 명령 프롬프트에서 `sbcipher -c "평문비밀번호"`를 실행해 얻은 해시값을 대입할 수 있습니다. 단, 향후 릴리스에서 복호화 지원이 완전히 제거될 수 있으므로 신규 암호화에는 권장하지 않습니다. [](https://docs.tibco.com/pub/str/latest/doc/html/admin/sec-encryption.html)
+
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABXUlEQVQ4jYXTP0hWURjH8Y+Xi0tgiiCmhdAi4SI4iDgUNikvQk5GJBgYLja4hQiWfyDEQchBhwh1NmiMQBCLhtwcBUHQxVxU0ECx4Rzz5XLf1wcOl/vc5/u755zn91R4/1smujCAx6iJuWNsYRlfiovTDLyKF1lF3MUDFPAVwzjMCnzH0xwYDrCLOvShFc24SGLB2zLwGTZQiaOYe4gFSFCNqRIwfMCjCN8ryr/G/QTPolBevEI7zrGDpsz3vgSdJeAeNKIbs3ieU9OWuGnVdRwIZ6zHpHA3vajNEahKMttfjX99gk+CHyriMzdSXAoteokfmMcbTGAFp6Vg/Ekxij00YBstWMQ7/MKdMgKbSYSnsR/hOcFpS0IHSsVfrKXxjF0xOYKPGMNQGRjGcZLiSrjlZmwKrixnLPgmtPb/LBzGVcDMLfBnDF6/ZKfxp+DMfnQIU0iw8YYwzuvFwD9KnkDZ4LzwLwAAAABJRU5ErkJggg==)TIBCO Product Documentation +1
+
+만약 노드 배포 자동화와 관련해 **시크릿 키를 초기 부트스트랩 시점에 주입하는 상세 가이드**나 **`epadmin` 배포 파이프라인 구성**이 필요하신가요? 
+
+
+# Q: hocon 파일 datasource 부분에 program clientinfo 넣기 vs jvmOpt 부분에 넣기
+
+오라클 JDBC 드라이버 기준, `v$session` 메타데이터(PROGRAM, CLIENT\_INFO)를 **HOCON 파일의 `dataSource` 부분에 넣는 것이 훨씬 더 좋은 선택**입니다. 
+
+각 방식의 특징과 **왜 `dataSource` 방식을 강력히 권장하는지** 이유를 비교해 드립니다. 
+
+* * *
+
+1\. `dataSource` 부분에 넣는 방식 (강력 권장 ⭐)
+
+HOCON의 `jdbcDataSources` 설정 내 `connectionProperties` 속성을 통해 전달하는 방식입니다. 
+
+-   **동작 원리:** 해당 데이터소스(`Pool`)를 사용하는 **Query Operator가 커넥션을 맺을 때만** 오라클 드라이버 파라미터로 명확하게 주입됩니다. 
+-   **장점:**
+    -   **노드 및 용도별 완전 분리:** 하나의 노드 안에서 여러 개의 DB(예: 대외계, 내부용)나 여러 종류의 쿼리 테이블을 쓸 때, **커넥션 풀마다 다른 `CLIENT_INFO`나 `PROGRAM`을 개별 지정**할 수 있습니다.
+    -   **유지보수 직관성:** DB 연결 정보와 DB 세션 식별 정보가 같은 HOCON 파일(`jdbcdatasource` 타입)에 모여 있어 관리가 매우 직관적입니다. 
+
+hocon
+
+```
+# dataSource 방식 예시
+Oracle_Dynamic_Source = {
+  driverClassName = "oracle.jdbc.OracleDriver"
+  serverURL = "jdbc:oracle:thin:@//db-server:1521/ORCL"
+  connectionProperties = "v$session.program=StreamBase:${NODE_NAME}&v$session.client_info=${DB_PURPOSE}"
+}
+```
+
+코드를 사용할 때는 주의가 필요합니다.
+
+* * *
+
+2\. `jvmOpt` 부분에 넣는 방식 (비권장)
+
+HOCON의 `com.tibco.ep.streambase.configuration.sbengine` 설정 내 `jvmArgs`에 `-Doracle.jdbc.v$session.program=...` 같은 시스템 프로퍼티를 주입하는 방식입니다. 
+
+-   **동작 원리:** 자바 가상 머신(JVM) 전역 변수로 세팅되어, 해당 JVM 위에서 동작하는 **모든 오라클 JDBC 드라이버 연결에 일괄 적용**됩니다. 
+-   **단점:**
+    -   **커넥션 풀별 커스텀 불가:** 해당 노드 내에서 맺어지는 모든 오라클 연결이 **동일한 `PROGRAM`명과 `CLIENT_INFO`를 강제로 공유**하게 됩니다. 즉, 쿼리 오퍼레이터별 세부 용도(소분류) 구분이 불가능해집니다.
+    -   **설정 파편화:** DB 세션 관련 설정이 데이터소스 설정 파일이 아닌 엔진 구동 설정(`sbengine.conf`) 쪽에 흩어지게 되므로 구조적으로 깔끔하지 않습니다. 
+
+hocon
+
+```
+# jvmOpt 방식 예시 (비권장)
+configuration = {
+  StreamBaseEngine = {
+    jvmArgs = [
+      "-Doracle.jdbc.v$session.program=StreamBase:${NODE_NAME}"
+    ]
+  }
+}
+```
+
+코드를 사용할 때는 주의가 필요합니다.
+
+* * *
+
+📌 결론 및 추천
+
+오라클에서 **"어떤 노드의, 어떤 용도(Query Operator)의 커넥션인가"**를 정밀하게 모니터링하는 것이 최종 목적이기 때문에, 풀(Pool) 단위로 세밀하게 제어할 수 있는 **`dataSource` 방식**이 정석입니다. 
+
+만약 여러 개의 `jdbcDataSources`를 사용 중이시라면, 공통 치환 변수(`${NODE_NAME}`)를 활용해 `dataSource` 쪽에 각각 매핑해 주는 구조로 설계하시기 바랍니다. 
+
+현재 구성하시려는 HOCON 인프라 환경에서 **여러 개의 데이터소스를 하나의 파일로 묶어서 관리하는 구조**를 만들고 계시는가요? 필요하시다면 다중 데이터소스 배치 예시를 지원해 드릴 수 있습니다. 
+
