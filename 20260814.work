@@ -656,6 +656,79 @@ DB 입장에서 `LAST_CALL_ET`는 세션의 상태에 따라 다음 2가지 정�
 
 ![프로필 사진](https://lh3.googleusercontent.com/a/ACg8ocJ13vcZ01HqTmls5FcsM5vygMKJYF9w9yOhVRcy0Q2bMhzIR6U=s64-c-v1-rj)
 
-  
-
 Flash
+
+10초 주기로 수집된 TB_SESSION_METRIC_HIST 테이블 데이터를 바탕으로 머신(Machine)별 피크 분석 및 커넥션풀 튜닝 수치를 확정하기 위한 정밀 분석 SQL 4종 세트입니다.
+LAST_CALL_ET 지표를 활용하여 Active 쿼리 지연 여부와 Inactive 커넥션 방치 시간까지 동시에 검증할 수 있도록 구성했습니다.
+1. 머신별 Peak Active / Inactive 통합 요약 (의사결정용 핵심 쿼리)
+가장 먼저 돌려봐야 할 쿼리입니다. 일주일 전체 기간 동안 각 머신별로 ① 순간 최대 Active 세션 수(Peak), ② 평균 Active 세션 수, ③ Inactive 세션 수를 한눈에 파악하여 max-connections 상한선을 정하는 기준이 됩니다.
+SELECT 
+    machine,
+    COUNT(*) AS total_samples,
+    -- Active 세션 수 통계
+    MAX(active_cnt)                     AS max_active_peak,   -- ★ 가장 중요: 머신별 순간 최대 Active 수
+    ROUND(AVG(active_cnt), 2)           AS avg_active_cnt,    -- 평시 평균 Active 수
+    -- Inactive 세션 수 통계
+    MAX(inactive_cnt)                   AS max_inactive_cnt,  -- 최대 Inactive 점유 수
+    ROUND(AVG(inactive_cnt), 2)         AS avg_inactive_cnt,  -- 평균 Inactive 점유 수
+    -- 전체 세션 수 통계
+    MAX(total_cnt)                      AS max_total_conn
+FROM TB_SESSION_METRIC_HIST
+-- WHERE collect_time BETWEEN TO_DATE('2026-08-07', 'YYYY-MM-DD') AND TO_DATE('2026-08-14', 'YYYY-MM-DD')
+GROUP BY machine
+ORDER BY max_active_peak DESC;
+
+2. 머신별 Active Spike(순간 폭증) 타임스탬프 추적
+Active 세션이 머신별로 **가장 높게 치솟았던 피크 순간(Top 5)**이 언제였는지, 그리고 그때 ACTIVE 쿼리가 지연(max_active_et)되고 있었는지를 추적합니다.
+SELECT *
+FROM (
+    SELECT 
+        collect_time,
+        machine,
+        active_cnt,
+        inactive_cnt,
+        total_cnt,
+        max_active_et,  -- ACTIVE 상태 쿼리의 최대 체류 시간(초)
+        DENSE_RANK() OVER (PARTITION BY machine ORDER BY active_cnt DESC, collect_time DESC) AS rnk
+    FROM TB_SESSION_METRIC_HIST
+)
+WHERE rnk <= 5 -- 머신별 Peak Top 5 순간 추출
+ORDER BY machine, rnk;
+
+> 분석 포인트:
+>  * active_cnt가 가장 높았던 피크 타임에도 max_active_et가 **0(또는 1초 미만)**으로 짧다면, DB 쿼리가 매우 빠르게 처리되고 있어 Max Connection을 3~5개로 줄여도 100% 안전하다는 뜻입니다.
+> 
+3. 머신별 시간대별(1시간 단위) Active 수위(Watermark) 변화 추적
+일주일 동안 일별/시간대별로 Active 세션 트렌드가 어떻게 움직였는지 확인하여, 특정 시간대(예: 야간 배치, 주초 출근)에만 세션이 튀는 패턴이 있는지 분석합니다.
+SELECT 
+    TO_CHAR(collect_time, 'YYYY-MM-DD HH24') AS time_slot,
+    machine,
+    MAX(active_cnt)              AS peak_active,
+    ROUND(AVG(active_cnt), 2)    AS avg_active,
+    MAX(max_active_et)           AS max_query_delay_sec
+FROM TB_SESSION_METRIC_HIST
+GROUP BY TO_CHAR(collect_time, 'YYYY-MM-DD HH24'), machine
+ORDER BY time_slot ASC, machine;
+
+4. Inactive 커넥션 무한 방치(Idle Leak) 검증 쿼리
+conTimeout 설정이 제대로 작동하지 않아 Inactive 세션이 파기되지 않고 계속 쌓여있는지 검증합니다.
+SELECT 
+    machine,
+    MAX(max_idle_et)                    AS max_idle_seconds, -- 가장 오래 놀고 있는 세션의 유휴 시간(초)
+    ROUND(MAX(max_idle_et) / 3600, 1)   AS max_idle_hours,   -- 시간 단위 환산
+    ROUND(AVG(max_idle_et), 0)          AS avg_idle_seconds
+FROM TB_SESSION_METRIC_HIST
+WHERE inactive_cnt > 0
+GROUP BY machine
+ORDER BY max_idle_seconds DESC;
+
+> 분석 포인트:
+>  * max_idle_hours가 수십~수백 시간으로 찍힌다면, connectionTimeout이 제대로 안 먹혀 유휴 커넥션이 DB 세션을 평생 무한 점유하고 있는 상태입니다.
+> 
+💡 분석 결과 해석 및 액션 가이드
+ * 1번 쿼리의 max_active_peak 확인:
+   * 특정 머신의 Peak Active 세션 수가 10개 미만으로 확인되고, 2번 쿼리에서 max_active_et가 대부분 0초라면:
+   * 해당 머신 내 프로세스당 max-connections = 3 또는 5 설정에 정량적 확신을 가져도 됩니다.
+ * 4번 쿼리의 max_idle_hours 확인:
+   * 유휴 시간이 수 시간 이상 길게 누적되어 있다면 minimumNumberOfConnections 축소 및 connectionTimeoutMilliseconds (예: 10000ms) 적용만으로 300개 커넥션을 30~40개 수준으로 즉시 감축 가능합니다.
+
